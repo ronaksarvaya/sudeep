@@ -1,0 +1,16 @@
+# Node modules
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.env
+
+# React / Build
+dist/
+build/
+.DS_Store
+coverage/
