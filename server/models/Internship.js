@@ -22,7 +22,7 @@ const InternshipSchema = new mongoose.Schema({
     },
     source: {
         type: String,
-        enum: ['LinkedIn', 'Indeed', 'WorkIndia', 'PMInternshipScheme', 'Other'],
+        enum: ['LinkedIn', 'Indeed', 'WorkIndia', 'PMInternshipScheme', 'Internshala', 'Other'],
         required: true,
     },
     embeddingVector: [Number], // For AI similarity
