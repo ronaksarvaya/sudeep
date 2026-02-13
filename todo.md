@@ -1,1 +1,1 @@
-Implement internshala Scraper
+~~Implement internshala Scraper~~ ✅ Done

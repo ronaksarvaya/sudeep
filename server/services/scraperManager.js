@@ -1,4 +1,5 @@
 const PMInternshipScraper = require('../scrapers/pminternship');
+const IntershalaScraper = require('../scrapers/Internshala_scraper');
 const cron = require('node-cron');
 const Internship = require('../models/Internship');
 // const LinkedInScraper = require('../scrapers/linkedin');
@@ -29,6 +30,7 @@ const scrapeAll = async () => {
     // array of scrapers to run
     const scrapers = [
         new PMInternshipScraper(),
+        new IntershalaScraper(),
         // new LinkedInScraper(),
         // new IndeedScraper(),
         // new WorkIndiaScraper(),

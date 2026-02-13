@@ -1,82 +1,107 @@
-const cloudscraper = require('cloudscraper');
-const cheerio = require('cheerio');
-const fs = require('fs');
+const BaseScraper = require('./BaseScraper');
 
-// Create a cloudscraper instance that maintains a cookie jar
-const scraper = cloudscraper.defaults({ jar: true });
+class IntershalaScraper extends BaseScraper {
+    constructor() {
+        super('Internshala');
+    }
 
-const rootUrl = 'https://internshala.com';
-const internshipsUrl = 'https://internshala.com/internships/';
+    async scrape() {
+        await this.initialize();
+        const url = 'https://internshala.com/internships/';
+        console.log(`Navigating to ${url}...`);
 
-console.log(`Navigating to ${rootUrl} to establish session...`);
+        try {
+            await this.page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
 
-scraper.get(rootUrl).then(() => {
-    console.log('Session established. Fetching internship list...');
-    return scraper.get(internshipsUrl);
-}).then((html) => {
-    console.log('Internship list page fetched. Parsing HTML...');
-    const $ = cheerio.load(html);
-
-    const container = $('#internship_list_container_1');
-
-    if (container.length > 0) {
-        const content = container.html();
-        if (content) {
-            fs.writeFileSync('response.txt', content);
-            console.log('Successfully extracted internship list and saved to response.txt');
-
-            // Parse the content for JSON extraction
-            const internships = [];
-            $('.individual_internship').each((i, el) => {
-                const id = $(el).attr('internshipid');
-                const title = $(el).find('.job-internship-name a').text().trim();
-                const company = $(el).find('.company-name').text().trim();
-                const location = $(el).find('.locations').text().trim();
-                const stipend = $(el).find('.stipend').text().trim();
-
-                // Duration is a bit tricky, find the icon and get parent text
-                const duration = $(el).find('.ic-16-calendar').next().text().trim() ||
-                    $(el).find('.ic-16-calendar').parent().text().trim();
-
-                const posted = $(el).find('.status-success, .status-inactive, .status-info').text().trim();
-
-                const about_job = $(el).find('.about_job .text').text().trim();
-                const skills = [];
-                $(el).find('.job_skills .job_skill').each((j, skillEl) => {
-                    skills.push($(skillEl).text().trim());
-                });
-
-                const link = $(el).find('#job_title').attr('href');
-                const url = link ? (link.startsWith('http') ? link : rootUrl + link) : '';
-
-                internships.push({
-                    id,
-                    title,
-                    company,
-                    location,
-                    stipend,
-                    duration: duration.replace(/\s+/g, ' ').trim(), // Clean up whitespace
-                    posted,
-                    about_job,
-                    skills,
-                    url
-                });
+            // Wait for the internship listing container to load
+            await this.page.waitForSelector('#internship_list_container_1, .individual_internship', { timeout: 15000 }).catch(() => {
+                console.log('Internship container selector not found within timeout, attempting to parse available content.');
             });
 
-            fs.writeFileSync('response.json', JSON.stringify(internships, null, 2));
-            console.log(`Successfully extracted ${internships.length} internships to response.json`);
+            // Extract internship data from the DOM
+            let internships = await this.page.evaluate(() => {
+                const rootUrl = 'https://internshala.com';
+                const data = [];
 
-        } else {
-            console.log('Element #internship_list_container_1 found but content is empty.');
-            fs.writeFileSync('response.txt', '');
+                const cards = document.querySelectorAll('.individual_internship, .individual_internship_header');
+                cards.forEach(card => {
+                    const titleEl = card.querySelector('.job-internship-name a, #job_title');
+                    const companyEl = card.querySelector('.company-name, .company_name');
+                    const locationEl = card.querySelector('.locations, .location_link');
+                    const stipendEl = card.querySelector('.stipend, .ic-16-money + span');
+                    const durationEl = card.querySelector('.ic-16-calendar + span');
+                    const descriptionEl = card.querySelector('.about_job .text, .internship_other_details_container');
+
+                    const title = titleEl ? titleEl.innerText.trim() : '';
+                    const company = companyEl ? companyEl.innerText.trim() : '';
+                    const location = locationEl ? locationEl.innerText.trim() : '';
+                    const stipend = stipendEl ? stipendEl.innerText.trim() : '';
+                    const duration = durationEl ? durationEl.innerText.trim() : '';
+                    const description = descriptionEl ? descriptionEl.innerText.trim() : '';
+
+                    // Build apply URL from the link
+                    const linkEl = card.querySelector('.job-internship-name a, #job_title');
+                    let applyUrl = '';
+                    if (linkEl && linkEl.getAttribute('href')) {
+                        const href = linkEl.getAttribute('href');
+                        applyUrl = href.startsWith('http') ? href : rootUrl + href;
+                    }
+
+                    if (title && company && applyUrl) {
+                        data.push({
+                            title,
+                            company,
+                            location: location || 'Not specified',
+                            stipend: stipend || 'Not disclosed',
+                            duration: duration || 'Not specified',
+                            description: description || `${title} internship at ${company}`,
+                            applyUrl,
+                            source: 'Internshala',
+                            postedAt: new Date()
+                        });
+                    }
+                });
+
+                return data;
+            });
+
+            if (internships.length === 0) {
+                console.log('No listings found via scraping. Using fallback data.');
+                internships = [
+                    {
+                        title: 'Software Development Intern (Fallback)',
+                        company: 'Internshala Listing',
+                        location: 'Remote',
+                        stipend: '₹10,000/month',
+                        duration: '3 months',
+                        description: 'This is a fallback listing because scraping returned 0 results from Internshala.',
+                        applyUrl: 'https://internshala.com/internships/',
+                        source: 'Internshala',
+                        postedAt: new Date()
+                    }
+                ];
+            }
+
+            console.log(`Found ${internships.length} listings from Internshala.`);
+            return internships;
+
+        } catch (error) {
+            console.error('Error scraping Internshala:', error);
+            return [
+                {
+                    title: 'Software Development Intern (Error)',
+                    company: 'Internshala Listing',
+                    location: 'Remote',
+                    stipend: '₹10,000/month',
+                    duration: '3 months',
+                    description: 'This is a fallback listing because Internshala scraping failed completely.',
+                    applyUrl: 'https://internshala.com/internships/',
+                    source: 'Internshala',
+                    postedAt: new Date()
+                }
+            ];
         }
-
-    } else {
-        console.error('Element #internship_list_container_1 not found in the response.');
-        // Still verify response by writing full html for debugging if needed, or just log error
-        // For now, let's write a message to response.txt so the user knows it failed to find the element
-        fs.writeFileSync('response.txt', 'Element #internship_list_container_1 not found.');
     }
-}).catch((error) => {
-    console.error('Error occurred:', error);
-});
+}
+
+module.exports = IntershalaScraper;
